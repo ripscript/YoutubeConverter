@@ -16,7 +16,8 @@ API untuk streaming audio dan download MP3 langsung dari video YouTube menggunak
 2. [Instalasi](#instalasi)
 3. [Menjalankan Aplikasi](#menjalankan-aplikasi)
 4. [Penggunaan API](#penggunaan-api)
-5. [Troubleshooting](#troubleshooting)
+5. [Docker](#docker)
+6. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -156,6 +157,59 @@ curl -o "audio.mp3" "http://localhost:8000/download?url=https://www.youtube.com/
 
 ---
 
+## 🐳 Docker
+
+Proyek ini sudah siap dijalankan dengan Docker. Container akan otomatis menyertakan `ffmpeg`, Python, dan semua dependensi.
+
+### Build Image
+
+```bash
+docker build -t youtube-converter .
+```
+
+### Jalankan Container
+
+```bash
+docker run -d -p 8000:8000 --name youtube-converter youtube-converter
+```
+
+Akses di `http://localhost:8000`.
+
+### Setel JWT_SECRET_KEY
+
+Untuk keamanan, setel `JWT_SECRET_KEY` saat menjalankan container:
+
+```bash
+docker run -d -p 8000:8000 -e JWT_SECRET_KEY="rahasiakuat123" --name youtube-converter youtube-converter
+```
+
+> **⚠️ Penting:** Di production, gunakan kunci yang kuat dan acak. Tanpa disetel, akan dipakai nilai default yang tidak aman.
+
+**Ganti port host (misal 8080):**
+```bash
+docker run -d -p 8080:8000 --name youtube-converter youtube-converter
+```
+
+**Lihat log langsung (foreground):**
+```bash
+docker run -it --rm -p 8000:8000 youtube-converter
+```
+
+### Management Container
+
+```bash
+# Hentikan
+docker stop youtube-converter
+
+# Mulai lagi
+docker start youtube-converter
+
+# Hapus container
+docker rm youtube-converter
+```
+
+---
+
 ## ❓ Troubleshooting
 
 | Masalah | Solusi |
@@ -167,17 +221,5 @@ curl -o "audio.mp3" "http://localhost:8000/download?url=https://www.youtube.com/
 | Download MP3 gagal | Periksa apakah `ffmpeg` sudah terinstal dan video tersedia |
 | File MP3 tidak muncul | Cek folder `downloads/` — pastikan ada dan writable |
 | Stream/URL lambat atau error | Server otomatis menambahkan header User-Agent agar tidak diblokir. Pastikan koneksi internet stabil. |
-
----
-
-## 🚀 Roadmap
-
-- [x] **Download & convert ke MP3**
-- [x] **Streaming & URL endpoint stabil** (optimasi `yt-dlp` dan header User-Agent)
-- [x] Pilihan kualitas audio (128kbps, 192kbps, 320kbps)
-- [ ] Authentication/JWT
-- [ ] Docker setup
-
----
 
 **Selamat mencoba! Jika ada error, beri tahu saya apa pesan errornya.**

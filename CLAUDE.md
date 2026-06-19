@@ -75,13 +75,4 @@ Akses dokumentasi otomatis (Swagger UI) di `http://localhost:8000/docs`.
 *   **Download MP3 gagal**: Periksa instalasi `ffmpeg` dan ketersediaan video.
 *   **File MP3 tidak muncul**: Cek folder `downloads/` (harus ada dan writable).
 
-## 🚀 Roadmap
-
-*   [x] **Download & convert ke MP3**
-*   [x] **Streaming & URL endpoint stabil** (optimasi `yt-dlp` dan header User-Agent)
-*   [x] Pilihan kualitas audio (128kbps, 192kbps, 320kbps)
-*   [ ] Authentication/JWT
-*   [ ] Docker setup
-
----
 Saya siap membantu Anda dengan proyek ini. Beri tahu saya jika ada tugas atau pertanyaan!
