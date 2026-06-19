@@ -130,9 +130,29 @@ Atau di browser, buka URL:
 http://localhost:8000/download?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
-File MP3 akan ter-download secara otomatis dengan kualitas **192 kbps**.
+### 🎵 Pilihan Kualitas Audio
 
-> **Catatan:** Proses download & konversi membutuhkan waktu beberapa detik tergantung durasi video. File disimpan sementara di folder `downloads/`.
+Semua endpoint menerima parameter opsional `quality` untuk mengatur bitrate audio:
+
+| Nilai | Bitrate |
+|-------|---------|
+| `low` | 128 kbps |
+| `medium` | 192 kbps (default) |
+| `high` | 320 kbps |
+
+**Contoh penggunaan:**
+```bash
+# Streaming dengan kualitas tinggi
+curl "http://localhost:8000/stream?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&quality=high"
+
+# URL audio dengan kualitas rendah (hemat bandwidth)
+curl "http://localhost:8000/url?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&quality=low"
+
+# Download MP3 kualitas tinggi (320 kbps)
+curl -o "audio.mp3" "http://localhost:8000/download?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&quality=high"
+```
+
+> **Catatan:** Kualitas yang dipilih adalah batas maksimal (bitrate ≤ nilai yang diminta). Jika YouTube tidak menyediakan bitrate yang diminta, yt-dlp akan memilih kualitas terbaik yang tersedia di bawah bitrate tersebut.
 
 ---
 
@@ -154,7 +174,7 @@ File MP3 akan ter-download secara otomatis dengan kualitas **192 kbps**.
 
 - [x] **Download & convert ke MP3**
 - [x] **Streaming & URL endpoint stabil** (optimasi `yt-dlp` dan header User-Agent)
-- [ ] Pilihan kualitas audio (128kbps, 192kbps, 320kbps)
+- [x] Pilihan kualitas audio (128kbps, 192kbps, 320kbps)
 - [ ] Authentication/JWT
 - [ ] Docker setup
 

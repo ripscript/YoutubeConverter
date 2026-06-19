@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(/home/ripscript/project/youtube-converter/venv/bin/pip freeze *)"
+      "Bash(/home/ripscript/project/youtube-converter/venv/bin/pip freeze *)",
+      "Bash(curl -X GET http://localhost:8000/stream?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ -I)",
+      "Bash(curl *)",
+      "Bash(pkill -f \"uvicorn app:app\")"
     ]
   }
 }

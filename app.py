@@ -13,9 +13,14 @@ Usage:
 import yt_dlp
 import requests
 import os
-from fastapi import FastAPI, HTTPException, Query
+import base64
+from enum import Enum
+from datetime import datetime, timedelta
+from fastapi import FastAPI, HTTPException, Query, Depends, Security
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordBearer
+from jose import JWTError, jwt
 
 app = FastAPI(
     title="YouTube Audio Streamer",
@@ -30,14 +35,70 @@ app.add_middleware(
     allow_methods=["GET"],
 )
 
+# --- Security configuration ---------------------------------------------------
+
+# Secret key for JWT signing – in production set this via environment variable
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-to-a-strong-secret")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# Static username/password pairs (for demo purposes). Store passwords in plain text only for this simple example.
+STATIC_USERS = {
+    "admin": "password123",
+}
+
+# FastAPI security utilities
+basic_auth = HTTPBasic()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+def verify_basic_credentials(credentials: HTTPBasicCredentials = Security(basic_auth)) -> str:
+    """Validate username/password using the static dict.
+
+    Returns the username if valid, otherwise raises 401.
+    """
+    username = credentials.username
+    password = credentials.password
+    expected = STATIC_USERS.get(username)
+    if expected is None or password != expected:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return username
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str | None = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Token missing subject")
+        return username
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+# --- End of security configuration --------------------------------------------
+
 # --- Helper Functions ---
 
-def get_best_audio_url(youtube_url: str) -> str:
+class AudioQuality(str, Enum):
+    low = "128"
+    medium = "192"
+    high = "320"
+
+
+def get_audio_stream_url(youtube_url: str, quality: AudioQuality = AudioQuality.medium) -> str:
     """
-    Mengambil URL stream audio terbaik dari video YouTube dengan optimasi kecepatan.
+    Mengambil URL stream audio berdasarkan kualitas yang diminta.
     """
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": f"bestaudio[abr<={quality.value}]/bestaudio",
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
@@ -51,7 +112,7 @@ def get_best_audio_url(youtube_url: str) -> str:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Terjadi kesalahan: {str(e)}")
 
-def download_mp3(youtube_url: str, output_dir: str = "./downloads") -> str:
+def download_mp3(youtube_url: str, quality: AudioQuality = AudioQuality.medium, output_dir: str = "./downloads") -> str:
     """
     Mendownload audio dari video YouTube dan mengonversinya ke MP3.
     Mengembalikan path file MP3 yang sudah di-download.
@@ -59,13 +120,13 @@ def download_mp3(youtube_url: str, output_dir: str = "./downloads") -> str:
     os.makedirs(output_dir, exist_ok=True)
 
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": f"bestaudio[abr<={quality.value}]/bestaudio",
         "outtmpl": os.path.join(output_dir, "%(title)s-%(id)s.%(ext)s"),
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
-                "preferredquality": "192",
+                "preferredquality": quality.value,
             }
         ],
         "noplaylist": True,
@@ -118,43 +179,65 @@ def proxy_stream(audio_url: str):
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Gagal terhubung ke sumber audio: {str(e)}")
 
-# --- API Endpoints ---
+# --- API Endpoints -----------------------------------------------------------
 
 @app.get("/")
 async def root():
     return {"message": "Selamat datang di YouTube Audio Streamer API", "docs": "/docs"}
 
+@app.post("/login")
+async def login(current_user: str = Depends(verify_basic_credentials)):
+    """Authenticate using HTTP Basic and return a JWT.
+
+    The client sends `Authorization: Basic <base64>` header. FastAPI's `HTTPBasic`
+    dependency extracts the credentials and `verify_basic_credentials` validates
+    them against the static user dict. If valid, a JWT containing the username as
+    the `sub` claim is returned.
+    """
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(data={"sub": current_user}, expires_delta=access_token_expires)
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @app.get("/stream")
 async def stream_audio(
-    url: str = Query(..., description="URL video YouTube yang ingin di-stream audio-nya")
+    url: str = Query(..., description="URL video YouTube yang ingin di-stream audio-nya"),
+    quality: AudioQuality = Query(default=AudioQuality.medium, description="Kualitas audio: 128, 192, atau 320 kbps"),
+    current_user: str = Depends(get_current_user)
 ):
     """
     Mengembalikan aliran audio langsung dari video YouTube.
     URL akan diputar langsung oleh pemain audio (bukan didownload).
+    Memerlukan token JWT yang valid.
     """
-    audio_url = get_best_audio_url(url)
+    audio_url = get_audio_stream_url(url, quality)
     return proxy_stream(audio_url)
 
 @app.get("/url")
 async def get_audio_url_only(
-    url: str = Query(..., description="URL video YouTube")
+    url: str = Query(..., description="URL video YouTube"),
+    quality: AudioQuality = Query(default=AudioQuality.medium, description="Kualitas audio: 128, 192, atau 320 kbps"),
+    current_user: str = Depends(get_current_user)
 ):
     """
     Hanya mengembalikan URL langsung ke stream audio.
     Berguna jika Anda ingin memainkan audio secara langsung di aplikasi Anda.
+    Memerlukan token JWT yang valid.
     """
-    audio_url = get_best_audio_url(url)
+    audio_url = get_audio_stream_url(url, quality)
     return {"audio_url": audio_url}
 
 @app.get("/download")
 async def download_audio(
-    url: str = Query(..., description="URL video YouTube yang ingin di-download MP3-nya")
+    url: str = Query(..., description="URL video YouTube yang ingin di-download MP3-nya"),
+    quality: AudioQuality = Query(default=AudioQuality.medium, description="Kualitas audio: 128, 192, atau 320 kbps"),
+    current_user: str = Depends(get_current_user)
 ):
     """
     Mendownload audio dari video YouTube sebagai file MP3.
     File akan dikirim langsung ke klien sebagai lampiran.
+    Memerlukan token JWT yang valid.
     """
-    mp3_path = download_mp3(url)
+    mp3_path = download_mp3(url, quality)
     filename = os.path.basename(mp3_path)
     return FileResponse(
         path=mp3_path,

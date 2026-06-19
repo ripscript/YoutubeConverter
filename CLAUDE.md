@@ -79,7 +79,7 @@ Akses dokumentasi otomatis (Swagger UI) di `http://localhost:8000/docs`.
 
 *   [x] **Download & convert ke MP3**
 *   [x] **Streaming & URL endpoint stabil** (optimasi `yt-dlp` dan header User-Agent)
-*   [ ] Pilihan kualitas audio (128kbps, 192kbps, 320kbps)
+*   [x] Pilihan kualitas audio (128kbps, 192kbps, 320kbps)
 *   [ ] Authentication/JWT
 *   [ ] Docker setup
 
