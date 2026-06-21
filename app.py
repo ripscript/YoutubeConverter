@@ -32,7 +32,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
 )
 
 # --- Security configuration ---------------------------------------------------
@@ -91,6 +91,108 @@ class AudioQuality(str, Enum):
     low = "128"
     medium = "192"
     high = "320"
+
+
+def get_video_info(youtube_url: str) -> dict:
+    """
+    Mengambil metadata detail video YouTube dari URL.
+    Tidak mendownload, hanya ekstrak info.
+    """
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+            video_id = info.get("id")
+            return {
+                "id": video_id,
+                "title": info.get("title"),
+                "url": f"https://www.youtube.com/watch?v={video_id}" if video_id else youtube_url,
+                "duration": info.get("duration"),
+                "duration_string": _format_duration(info.get("duration")),
+                "thumbnail": info.get("thumbnail") or (f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else None),
+                "thumbnails": info.get("thumbnails", []),
+                "channel": info.get("channel") or info.get("uploader"),
+                "channel_id": info.get("channel_id"),
+                "channel_url": info.get("channel_url") or info.get("uploader_url"),
+                "view_count": info.get("view_count"),
+                "like_count": info.get("like_count"),
+                "description": info.get("description"),
+                "upload_date": info.get("upload_date"),
+                "tags": info.get("tags", []),
+                "categories": info.get("categories", []),
+                "is_live": info.get("is_live", False),
+                "availability": info.get("availability"),
+                "formats": [
+                    {
+                        "format_id": f.get("format_id"),
+                        "ext": f.get("ext"),
+                        "abr": f.get("abr"),
+                        "vcodec": f.get("vcodec"),
+                        "acodec": f.get("acodec"),
+                        "filesize": f.get("filesize"),
+                        "format_note": f.get("format_note"),
+                    }
+                    for f in info.get("formats", [])
+                    if f.get("acodec") != "none"  # hanya format yang punya audio
+                ],
+            }
+    except yt_dlp.DownloadError as e:
+        raise HTTPException(status_code=400, detail=f"URL video tidak valid atau tidak tersedia: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan saat mengambil info: {str(e)}")
+
+
+def _format_duration(seconds: int | None) -> str | None:
+    """Format duration in seconds to HH:MM:SS or MM:SS."""
+    if seconds is None:
+        return None
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def search_youtube(query: str, max_results: int = 10) -> list[dict]:
+    """
+    Mencari video YouTube berdasarkan kata kunci menggunakan yt-dlp.
+    Mengembalikan daftar hasil pencarian dengan metadata.
+    """
+    search_query = f"ytsearch{max_results}:{query}"
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,   # faster — tidak mengekstrak info detail per video
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+            entries = info.get("entries", [])
+            results = []
+            for entry in entries:
+                if entry is None:
+                    continue
+                video_id = entry.get("id")
+                results.append({
+                    "id": video_id,
+                    "title": entry.get("title"),
+                    "url": f"https://www.youtube.com/watch?v={video_id}" if video_id else None,
+                    "duration": entry.get("duration"),
+                    "thumbnail": entry.get("thumbnail") or (f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else None),
+                    "channel": entry.get("channel") or entry.get("uploader"),
+                    "channel_url": entry.get("channel_url") or entry.get("uploader_url"),
+                    "view_count": entry.get("view_count"),
+                })
+            return results
+    except yt_dlp.DownloadError as e:
+        raise HTTPException(status_code=400, detail=f"Gagal mencari video: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan saat mencari: {str(e)}")
 
 
 def get_audio_stream_url(youtube_url: str, quality: AudioQuality = AudioQuality.medium) -> str:
@@ -245,6 +347,36 @@ async def download_audio(
         filename=filename,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+@app.get("/search")
+async def search_video(
+    q: str = Query(..., min_length=1, description="Kata kunci pencarian video YouTube"),
+    max_results: int = Query(default=10, ge=1, le=50, description="Jumlah maksimal hasil (1-50)"),
+    current_user: str = Depends(get_current_user)
+):
+    """
+    Mencari video YouTube berdasarkan kata kunci.
+    Mengembalikan daftar video beserta metadata (judul, durasi, channel, dll).
+    Memerlukan token JWT yang valid.
+    """
+    results = search_youtube(q, max_results)
+    return {
+        "query": q,
+        "total": len(results),
+        "results": results,
+    }
+
+@app.get("/video-detail")
+async def get_video_details(
+    url: str = Query(..., description="URL video YouTube yang ingin diambil detailnya"),
+    current_user: str = Depends(get_current_user)
+):
+    """
+    Mengambil detail lengkap video YouTube (judul, durasi, thumbnail, deskripsi, dll).
+    Memerlukan token JWT yang valid.
+    """
+    return get_video_info(url)
+
 
 # --- Main ---
 if __name__ == "__main__":

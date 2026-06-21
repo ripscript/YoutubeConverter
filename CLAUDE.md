@@ -1,78 +1,55 @@
-# Panduan Claude Code untuk YouTube Audio Streamer API
+# CLAUDE.md
 
-Ini adalah panduan untuk membantu Claude Code lebih cepat memahami dan membantu Anda dengan proyek **YouTube Audio Streamer API**.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 📝 Ringkasan Proyek
+## Project Overview
 
-Proyek ini adalah API berbasis FastAPI yang memungkinkan streaming audio real-time dan konversi/download audio MP3 dari video YouTube. Tujuannya adalah menyediakan microservice untuk fungsionalitas audio YouTube.
+YouTube Audio Streamer API — FastAPI microservice for real-time audio streaming, MP3 conversion/download, and YouTube video search. Uses `yt-dlp` for extraction and `ffmpeg` for audio transcoding.
 
-## 🎯 Tujuan Claude Code
+## Architecture
 
-Saya dapat membantu Anda dengan:
-- Debugging dan pemecahan masalah (troubleshooting)
-- Implementasi fitur baru dari roadmap
-- Penulisan tes
-- Optimalisasi kode
-- Pengaturan Docker
-- Menjelaskan bagian-bagian kode atau fungsionalitas API
+- **`app.py`** — Single-file FastAPI application containing all endpoints, auth, and helper functions.
+  - Endpoints: `/` (root), `/login` (JWT), `/stream` (proxy audio), `/url` (stream URL), `/download` (MP3), `/search` (video search).
+  - Auth: JWT-based (`python-jose`) with static user dict; `/login` uses HTTP Basic, other endpoints require Bearer token via `Authorization` header.
+  - Helper functions: `get_audio_stream_url()`, `proxy_stream()`, `download_mp3()`, `search_youtube()`.
+- **`youtube_converter.py`** — Standalone CLI utility (not used by the API, just a legacy script).
 
-## 🚀 Setup Cepat
+## Key Dependencies
 
-Untuk memulai bekerja dengan proyek ini, ikuti langkah-langkah berikut:
+| Package | Purpose |
+|---------|---------|
+| `fastapi` + `uvicorn` | Web framework & server |
+| `yt-dlp` | YouTube metadata + audio extraction |
+| `requests` | Streaming proxy (`proxy_stream`) |
+| `python-jose[cryptography]` | JWT creation/validation |
 
-1.  **Prasyarat:**
-    *   Python 3.12.3
-    *   `ffmpeg` (opsional, diperlukan untuk download & convert MP3)
-        *   **Ubuntu/Debian (WSL2):** `sudo apt-get update && sudo apt-get install -y ffmpeg`
-        *   **macOS:** `brew install ffmpeg`
-
-2.  **Instalasi Dependensi:**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    ```
-
-## ▶️ Menjalankan Aplikasi
-
-Pastikan virtual environment aktif, lalu jalankan server FastAPI:
+## Commands
 
 ```bash
-source venv/bin/activate
+# Run development server
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Docker
+docker build -t youtube-converter .
+docker run -d -p 8000:8000 -e JWT_SECRET_KEY="strong-secret" youtube-converter
+
+# Get JWT token (default creds: admin / password123)
+curl -s -X POST http://localhost:8000/login -u "admin:password123"
 ```
-Server akan berjalan di `http://localhost:8000`.
 
-## 🌐 Fitur Utama & Endpoint API
+## Important Code Patterns
 
-Akses dokumentasi otomatis (Swagger UI) di `http://localhost:8000/docs`.
+- **Audio extraction** uses `yt-dlp` with format `bestaudio[abr<={quality}]/bestaudio` (quality: 128/192/320).
+- **Streaming proxy** (`proxy_stream()`) fetches audio in 1 MB chunks with a real browser User-Agent.
+- **JWT config** via env var `JWT_SECRET_KEY` (default: `"change-me-to-a-strong-secret"`).
+- **Static users** defined in `STATIC_USERS` dict — add new users here for now.
+- **Downloaded MP3** files land in `downloads/` (gitignored). No cleanup logic exists yet.
 
-**Endpoint yang tersedia:**
+## Environment Variables
 
-*   **Dapatkan URL stream audio:**
-    *   `GET /url?url=<youtube_video_url>`
-    *   Mengembalikan URL langsung untuk streaming audio.
-    *   Contoh: `curl "http://localhost:8000/url?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ"`
-
-*   **Stream audio langsung:**
-    *   `GET /stream?url=<youtube_video_url>`
-    *   Streaming audio real-time yang dapat langsung diputar di browser atau `ffplay`.
-    *   Contoh: `http://localhost:8000/stream?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ`
-
-*   **Download & konversi audio ke MP3:**
-    *   `GET /download?url=<youtube_video_url>`
-    *   Mendownload dan mengonversi audio ke file MP3 (membutuhkan `ffmpeg`).
-    *   File disimpan sementara di folder `downloads/`.
-    *   Kualitas default: 192 kbps.
-    *   Contoh: `curl -o "audio.mp3" "http://localhost:8000/download?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ"`
-
-## ❓ Troubleshooting
-
-*   **`HTTP Error 400`**: Pastikan `yt-dlp` terbaru (`pip install --upgrade yt-dlp`).
-*   **`Connection refused`**: Pastikan server berjalan di port 8000.
-*   **Audio tidak muncul di browser**: Browser mungkin tidak mendukung format. Coba `ffplay`.
-*   **`ffmpeg` tidak ditemukan**: Pastikan `ffmpeg` terinstal (lihat bagian Prasyarat).
-*   **Download MP3 gagal**: Periksa instalasi `ffmpeg` dan ketersediaan video.
-*   **File MP3 tidak muncul**: Cek folder `downloads/` (harus ada dan writable).
-
-Saya siap membantu Anda dengan proyek ini. Beri tahu saya jika ada tugas atau pertanyaan!
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `JWT_SECRET_KEY` | `"change-me-to-a-strong-secret"` | Set a strong secret in production |

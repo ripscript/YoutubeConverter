@@ -6,6 +6,8 @@ API untuk streaming audio dan download MP3 langsung dari video YouTube menggunak
 > - Streaming audio real-time (bukan download permanen)
 > - Mendapatkan URL stream audio secara langsung
 > - **Download & convert audio ke MP3** (membutuhkan `ffmpeg`)
+> - **Pencarian video YouTube** berdasarkan kata kunci
+> - **Autentikasi JWT** untuk keamanan endpoint
 > - Siap untuk dijadikan microservice
 
 ---
@@ -130,6 +132,72 @@ Atau di browser, buka URL:
 ```
 http://localhost:8000/download?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
+
+### Endpoint 4: Cari video YouTube
+
+Mencari video berdasarkan kata kunci (memerlukan token JWT):
+
+```bash
+# Dapatkan token dulu
+TOKEN=$(curl -s -X POST "http://localhost:8000/login" -u "admin:password123" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Cari video
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:8000/search?q=lagu+indonesia"
+```
+
+**Response:**
+```json
+{
+  "query": "lagu indonesia",
+  "total": 10,
+  "results": [
+    {
+      "id": "dQw4w9WgXcQ",
+      "title": "Judul Video",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "duration": 212,
+      "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+      "channel": "Nama Channel",
+      "channel_url": "https://www.youtube.com/channel/UC...",
+      "view_count": 1234567
+    }
+  ]
+}
+```
+
+Parameter opsional `max_results` (1-50, default 10):
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:8000/search?q=rock+indonesia&max_results=5"
+```
+
+### 🔐 Autentikasi
+
+Endpoint `/stream`, `/url`, `/download`, dan `/search` **wajib** menyertakan token JWT.
+
+**Langkah-langkah:**
+
+1. Dapatkan token via `/login` dengan HTTP Basic Auth:
+   ```bash
+   curl -X POST "http://localhost:8000/login" -u "admin:password123"
+   ```
+   > Kredensial default: `admin` / `password123`
+
+   Response:
+   ```json
+   {
+     "access_token": "eyJhbGciOiJIUzI1NiIs...",
+     "token_type": "bearer"
+   }
+   ```
+
+2. Gunakan token di header `Authorization` tiap request:
+   ```bash
+   curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+        "http://localhost:8000/stream?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+   ```
+
+3. Token kedaluwarsa setelah **30 menit**. Dapatkan token baru dengan login ulang.
 
 ### 🎵 Pilihan Kualitas Audio
 
